@@ -1,0 +1,31 @@
+# Build artifacts
+aegis-cli
+out/
+staging/
+*.bundle
+*.bundle.sha256
+tmp/
+
+# Pulumi
+iac/pulumi/.pulumi/
+iac/pulumi/Pulumi.*.yaml
+iac/pulumi/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+mission-control/.venv/
+.venv/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Large model / image files (never commit)
+models/
+images/
+*.tar
+*.tar.gz
+*.run

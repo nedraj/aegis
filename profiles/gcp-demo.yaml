@@ -1,0 +1,67 @@
+# gcp-demo profile
+# Deploys the full stack to a single GCP n1-standard-4 + T4 GPU node running K3s.
+# Assumes initial internet for driver/model staging, then simulates air-gap.
+
+name: gcp-demo
+description: "GCP single-node T4 GPU demo (connected staging → NAT disabled)"
+version: "1.0.0"
+
+# Target environment
+target:
+  platform: gcp
+  instance_type: n1-standard-4
+  accelerator: nvidia-tesla-t4
+  count: 1
+  os: ubuntu-22.04-lts
+
+# Resource requests for the inference workload
+resources:
+  gpu: 1
+  memory: "8Gi"
+  cpu: "2"
+
+# Model configuration
+model:
+  name: phi3:mini
+  family: phi-3-mini-4k-instruct
+  context_length: 4096
+  quantization: q4_0  # handled by Ollama
+
+# Inference backend
+inference:
+  engine: ollama
+  image: ollama/ollama:latest
+  port: 11434
+  # runtimeClassName: nvidia  (when using nvidia-container-runtime on host)
+
+# Mission Control (orchestrator API - no external egress ever)
+mission_control:
+  image: aegis/mission-control:latest   # built locally during bundle
+  port: 8080
+  replicas: 1
+
+# Local registry (Zot)
+registry:
+  enabled: true
+  image: ghcr.io/project-zot/zot:latest
+  port: 5000
+
+# K3s configuration
+k3s:
+  version: "v1.30.2+k3s1"
+  # For airgap we preload images into /var/lib/rancher/k3s/agent/images/
+
+# Bundle behavior for this profile (used by generator)
+bundle:
+  include_k3s_airgap: false   # for gcp-demo we install k3s via get.k3s.io during cloud-init window
+  preload_images_to_containerd: true
+  model_preload: true
+
+# Template variables injected into all manifests by the generator
+template_vars:
+  namespace: aegis
+  ollama_replicas: 1
+  gpu_node_selector:
+    key: "nvidia.com/gpu"
+    value: "true"
+  image_pull_policy: IfNotPresent   # Never after import in full airgap

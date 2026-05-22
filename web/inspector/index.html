@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aegis • Bundle Inspector</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
+    
+    :root {
+      --aegis-teal: #14b8a6;
+    }
+    
+    body {
+      font-family: 'Inter', system_ui, sans-serif;
+    }
+    
+    .font-display {
+      font-family: 'Space Grotesk', 'Inter', sans-serif;
+      font-weight: 600;
+    }
+
+    .aegis-gradient {
+      background: linear-gradient(135deg, #0f766e, #14b8a6);
+    }
+
+    .section-card {
+      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
+                  box-shadow 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+    }
+    
+    .section-card:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+    }
+
+    .file-row {
+      transition: background-color 0.1s ease;
+    }
+    
+    .file-row:hover {
+      background-color: #f8fafc;
+    }
+
+    .nav-active {
+      border-bottom: 2px solid #14b8a6;
+      color: #0f766e;
+      font-weight: 600;
+    }
+
+    .metric-value {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    .bundle-header {
+      background: linear-gradient(to right, #0f172a, #1e2937);
+    }
+
+    .status-badge {
+      font-size: 0.75rem;
+      padding-left: 0.65rem;
+      padding-right: 0.65rem;
+      padding-top: 0.1rem;
+      padding-bottom: 0.1rem;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+
+    .manifest-card {
+      border-left: 3px solid #14b8a6;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-200">
+  <!-- Top Navigation -->
+  <nav class="border-b border-slate-800 bg-slate-900">
+    <div class="max-w-screen-2xl mx-auto">
+      <div class="px-8 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-x-3">
+          <div class="flex items-center gap-x-2">
+            <div class="w-9 h-9 aegis-gradient rounded-2xl flex items-center justify-center shadow-inner">
+              <i class="fa-solid fa-shield-halved text-white text-2xl"></i>
+            </div>
+            <div>
+              <span class="font-display text-2xl font-semibold tracking-tighter">Aegis</span>
+              <span class="ml-1 text-xs font-medium px-2 py-0.5 rounded bg-teal-900 text-teal-300">INSPECTOR</span>
+            </div>
+          </div>
+          <div class="ml-4 text-sm text-slate-400 hidden md:block">
+            Bundle Analysis &amp; Verification
+          </div>
+        </div>
+
+        <div class="flex items-center gap-x-4">
+          <!-- Bundle Info -->
+          <div id="bundle-info-header" 
+               class="hidden md:flex items-center gap-x-2 bg-slate-900 border border-slate-700 rounded-2xl px-4 py-1.5 text-sm">
+            <i class="fa-solid fa-file-archive text-teal-400"></i>
+            <span id="header-bundle-name" class="font-medium text-slate-300 mono text-xs max-w-[280px] truncate">—</span>
+          </div>
+
+          <button onclick="window.location.reload()"
+                  class="flex items-center gap-x-2 text-sm px-4 py-2 rounded-2xl border border-slate-700 hover:bg-slate-900 transition-colors">
+            <i class="fa-solid fa-sync text-xs"></i>
+            <span class="text-sm">Reload</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="max-w-screen-2xl mx-auto px-8 pt-8 pb-12">
+    
+    <!-- Hero / Summary -->
+    <div class="mb-8">
+      <div class="flex items-end justify-between mb-3">
+        <div>
+          <h1 class="font-display text-4xl tracking-tighter font-semibold">Bundle Inspector</h1>
+          <p class="text-slate-400 mt-1">Inspect, verify, and explore Aegis air-gap deployment bundles</p>
+        </div>
+        <div id="bundle-status" class="hidden">
+          <div class="flex items-center gap-x-2 bg-emerald-950 border border-emerald-800 text-emerald-300 px-4 py-1.5 rounded-3xl text-sm">
+            <i class="fa-solid fa-check-circle"></i>
+            <span class="font-semibold">Bundle Loaded</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Metrics Row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8" id="metrics-row">
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 section-card">
+        <div class="text-xs uppercase tracking-widest text-slate-500 font-medium mb-1">Total Size</div>
+        <div id="metric-size" class="text-3xl font-semibold metric-value text-white">—</div>
+        <div class="text-xs text-slate-500 mt-1">on disk</div>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 section-card">
+        <div class="text-xs uppercase tracking-widest text-slate-500 font-medium mb-1">Files</div>
+        <div id="metric-files" class="text-3xl font-semibold metric-value text-white">—</div>
+        <div class="text-xs text-slate-500 mt-1">inside bundle</div>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 section-card">
+        <div class="text-xs uppercase tracking-widest text-slate-500 font-medium mb-1">Profile</div>
+        <div id="metric-profile" class="text-3xl font-semibold text-teal-300">—</div>
+        <div id="metric-version" class="text-xs text-slate-500 mt-1">—</div>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 section-card">
+        <div class="text-xs uppercase tracking-widest text-slate-500 font-medium mb-1">Created</div>
+        <div id="metric-created" class="text-xl font-semibold text-white leading-tight">—</div>
+        <div id="metric-created-relative" class="text-xs text-slate-500 mt-0.5">—</div>
+      </div>
+    </div>
+
+    <!-- Main Content Tabs -->
+    <div class="mb-4 flex items-center border-b border-slate-800">
+      <div class="flex gap-x-1 text-sm">
+        <button onclick="switchTab('overview')" id="tab-overview"
+                class="tab-button px-6 py-3 font-medium text-sm nav-active">Overview</button>
+        <button onclick="switchTab('files')" id="tab-files"
+                class="tab-button px-6 py-3 font-medium text-sm text-slate-400 hover:text-slate-200">All Files</button>
+        <button onclick="switchTab('manifests')" id="tab-manifests"
+                class="tab-button px-6 py-3 font-medium text-sm text-slate-400 hover:text-slate-200">Kubernetes Manifests</button>
+        <button onclick="switchTab('verify')" id="tab-verify"
+                class="tab-button px-6 py-3 font-medium text-sm text-slate-400 hover:text-slate-200">Integrity</button>
+      </div>
+    </div>
+
+    <!-- TAB: Overview -->
+    <div id="panel-overview" class="tab-panel">
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+        <!-- Bundle Metadata -->
+        <div class="lg:col-span-3 bg-slate-900 border border-slate-800 rounded-3xl p-6">
+          <div class="flex items-center gap-x-2 mb-4">
+            <i class="fa-solid fa-info-circle text-teal-400"></i>
+            <h3 class="font-semibold">Bundle Metadata</h3>
+          </div>
+          <pre id="metadata-json" 
+               class="text-xs bg-slate-950 border border-slate-800 rounded-2xl p-5 overflow-auto max-h-[340px] text-emerald-300 mono leading-relaxed"></pre>
+        </div>
+
+        <div class="lg:col-span-2 space-y-5">
+          <!-- Contents Summary -->
+          <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6">
+            <div class="flex justify-between items-center mb-4">
+              <div class="font-semibold flex items-center gap-x-2">
+                <i class="fa-solid fa-folder-tree text-teal-400"></i>
+                <span>Contents Summary</span>
+              </div>
+            </div>
+            <div id="contents-summary" class="space-y-3 text-sm"></div>
+          </div>
+
+          <!-- Security Note -->
+          <div class="bg-emerald-950/70 border border-emerald-800/70 rounded-3xl p-5 text-sm">
+            <div class="flex gap-x-3">
+              <i class="fa-solid fa-lock text-emerald-400 mt-0.5"></i>
+              <div class="text-emerald-300 text-sm">
+                This bundle was created for <strong>air-gapped</strong> use. All model weights and container images were captured in a connected environment and are now fully self-contained.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Files -->
+    <div id="panel-files" class="tab-panel hidden">
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5">
+        <div class="flex items-center justify-between mb-4 px-2">
+          <div class="relative flex-1 max-w-sm">
+            <i class="fa-solid fa-search absolute left-4 top-3 text-slate-500"></i>
+            <input type="text" id="file-search" placeholder="Filter files..." 
+                   onkeyup="filterFiles()"
+                   class="w-full bg-slate-950 border border-slate-700 rounded-2xl pl-11 py-2.5 text-sm focus:outline-none focus:border-teal-700">
+          </div>
+          <div class="text-xs text-slate-400 font-medium px-3">
+            <span id="file-count">0</span> files
+          </div>
+        </div>
+
+        <div class="overflow-auto max-h-[520px] rounded-2xl border border-slate-800">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-950 sticky top-0">
+              <tr class="text-left text-xs text-slate-400 border-b border-slate-800">
+                <th class="px-5 py-3 font-medium">Path</th>
+                <th class="px-5 py-3 font-medium w-24">Size</th>
+                <th class="px-5 py-3 font-medium w-20">Type</th>
+                <th class="px-4 py-3 w-12"></th>
+              </tr>
+            </thead>
+            <tbody id="files-table-body" class="divide-y divide-slate-800 text-slate-300"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Manifests -->
+    <div id="panel-manifests" class="tab-panel hidden">
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="manifests-grid">
+        <!-- Populated dynamically via JS -->
+      </div>
+    </div>
+
+    <!-- TAB: Verify -->
+    <div id="panel-verify" class="tab-panel hidden">
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl p-7 max-w-3xl">
+        <div class="mb-6">
+          <h3 class="font-semibold text-xl flex items-center gap-x-2">
+            <i class="fa-solid fa-shield-halved text-teal-400"></i>
+            <span>Bundle Integrity Verification</span>
+          </h3>
+          <p class="text-sm text-slate-400 mt-1">Verifies every file against the embedded <span class="mono text-teal-300">SHA256SUMS</span> manifest.</p>
+        </div>
+
+        <button onclick="runVerification()"
+                class="w-full flex justify-center items-center gap-x-3 px-6 py-4 bg-teal-600 hover:bg-teal-500 active:bg-teal-700 transition-colors rounded-3xl font-semibold text-lg">
+          <i class="fa-solid fa-check-double"></i>
+          <span>Verify All Checksums</span>
+        </button>
+
+        <div id="verification-results" class="mt-6 hidden">
+          <div class="flex justify-between items-center mb-3 px-1">
+            <div class="font-semibold text-sm">Verification Results</div>
+            <div id="verify-summary" class="text-sm font-medium"></div>
+          </div>
+          <div id="verify-table" class="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden text-sm"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- File Content Modal -->
+  <div id="file-modal" onclick="if (event.target.id === 'file-modal') hideFileModal()" 
+       class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+    <div onclick="event.stopImmediatePropagation()" 
+         class="bg-slate-900 border border-slate-700 w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+      
+      <div class="px-6 py-4 border-b border-slate-700 flex justify-between items-center bg-slate-950">
+        <div>
+          <div id="modal-file-path" class="font-semibold mono text-sm text-teal-300"></div>
+          <div id="modal-file-size" class="text-xs text-slate-500"></div>
+        </div>
+        <button onclick="hideFileModal()" class="text-slate-400 hover:text-white px-3 py-1">
+          <i class="fa-solid fa-times text-xl"></i>
+        </button>
+      </div>
+      
+      <div class="flex-1 overflow-auto p-6 bg-slate-950" id="modal-content">
+        <pre class="text-xs text-emerald-300 mono whitespace-pre-wrap leading-relaxed"></pre>
+      </div>
+      
+      <div class="px-6 py-4 border-t border-slate-800 bg-slate-900 text-xs flex justify-end">
+        <button onclick="hideFileModal()" 
+                class="px-5 py-2 text-sm font-medium rounded-2xl border border-slate-700 hover:bg-slate-800">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Tailwind script
+    function initializeTailwind() {
+      document.documentElement.style.setProperty('--accent', '#14b8a6');
+    }
+
+    let currentBundleData = null;
+    let allFiles = [];
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function formatDate(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + 
+             ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    }
+
+    async function loadBundleData() {
+      try {
+        const res = await fetch('/api/summary');
+        if (!res.ok) throw new Error('Failed to load bundle');
+        
+        const data = await res.json();
+        currentBundleData = data;
+        
+        // Populate header
+        document.getElementById('header-bundle-name').textContent = data.filename || 'aegis.bundle';
+        document.getElementById('bundle-status').classList.remove('hidden');
+
+        // Metrics
+        document.getElementById('metric-size').textContent = formatBytes(data.total_size || 0);
+        document.getElementById('metric-files').textContent = (data.file_count || 0).toLocaleString();
+        document.getElementById('metric-profile').textContent = data.profile || 'unknown';
+        document.getElementById('metric-version').textContent = 'v' + (data.version || '1.0.0');
+        document.getElementById('metric-created').textContent = formatDate(data.created_at);
+        
+        // Relative time
+        if (data.created_at) {
+          const diff = Math.floor((Date.now() - new Date(data.created_at)) / (1000 * 60 * 60 * 24));
+          document.getElementById('metric-created-relative').textContent = diff === 0 ? 'today' : diff + ' days ago';
+        }
+
+        // Metadata JSON
+        document.getElementById('metadata-json').textContent = JSON.stringify(data.metadata || {}, null, 2);
+
+        // Contents summary
+        renderContentsSummary(data.contents || {});
+
+        // Load files for other tabs
+        await loadFileList();
+
+      } catch (e) {
+        console.error(e);
+        document.getElementById('metrics-row').innerHTML = `
+          <div class="col-span-4 bg-red-950 border border-red-800 text-red-300 p-6 rounded-3xl">
+            Failed to load bundle data. Is the server running correctly?
+          </div>`;
+      }
+    }
+
+    function renderContentsSummary(contents) {
+      const container = document.getElementById('contents-summary');
+      container.innerHTML = '';
+
+      const categories = [
+        { key: 'images', label: 'Container Images', icon: 'fa-layer-group' },
+        { key: 'models', label: 'Model Weights', icon: 'fa-brain' },
+        { key: 'manifests', label: 'K8s Manifests', icon: 'fa-file-code' },
+        { key: 'scripts', label: 'Scripts', icon: 'fa-terminal' }
+      ];
+
+      categories.forEach(cat => {
+        const count = contents[cat.key]?.length || 0;
+        const div = document.createElement('div');
+        div.className = `flex justify-between items-center px-1 py-1 text-sm ${count ? '' : 'opacity-50'}`;
+        div.innerHTML = `
+          <div class="flex items-center gap-x-3">
+            <i class="fa-solid ${cat.icon} w-5 text-teal-400"></i>
+            <span>${cat.label}</span>
+          </div>
+          <div class="font-medium text-teal-300">${count} items</div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    async function loadFileList() {
+      const res = await fetch('/api/files');
+      const files = await res.json();
+      allFiles = files;
+
+      renderFilesTable(files);
+      renderManifestsGrid(files);
+    }
+
+    function renderFilesTable(files) {
+      const tbody = document.getElementById('files-table-body');
+      tbody.innerHTML = '';
+
+      document.getElementById('file-count').textContent = files.length;
+
+      files.forEach(file => {
+        const tr = document.createElement('tr');
+        tr.className = 'file-row cursor-pointer';
+        
+        const ext = file.path.split('.').pop();
+        let typeBadge = '';
+        if (file.path.endsWith('.yaml') || file.path.endsWith('.yml')) typeBadge = `<span class="text-[10px] px-2 py-0.5 bg-blue-900 text-blue-300 rounded">YAML</span>`;
+        else if (file.path.includes('images/')) typeBadge = `<span class="text-[10px] px-2 py-0.5 bg-purple-900 text-purple-300 rounded">IMAGE</span>`;
+        else if (file.path.includes('models/')) typeBadge = `<span class="text-[10px] px-2 py-0.5 bg-amber-900 text-amber-300 rounded">MODEL</span>`;
+        else if (file.path.endsWith('.sh')) typeBadge = `<span class="text-[10px] px-2 py-0.5 bg-emerald-900 text-emerald-300 rounded">SCRIPT</span>`;
+        else typeBadge = `<span class="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 rounded">FILE</span>`;
+
+        tr.innerHTML = `
+          <td class="px-5 py-3 font-medium text-sm mono text-slate-300">${file.path}</td>
+          <td class="px-5 py-3 text-xs text-slate-400">${formatBytes(file.size)}</td>
+          <td class="px-5 py-3">${typeBadge}</td>
+          <td class="px-2 py-3 text-right">
+            <button class="text-teal-400 hover:text-teal-300 px-2" onclick="event.stopImmediatePropagation(); viewFile('${file.path}', ${file.size})">
+              <i class="fa-solid fa-eye"></i>
+            </button>
+          </td>
+        `;
+        
+        tr.onclick = () => viewFile(file.path, file.size);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterFiles() {
+      const term = document.getElementById('file-search').value.toLowerCase();
+      const filtered = allFiles.filter(f => f.path.toLowerCase().includes(term));
+      renderFilesTable(filtered);
+    }
+
+    function renderManifestsGrid(files) {
+      const container = document.getElementById('manifests-grid');
+      container.innerHTML = '';
+
+      const manifests = files.filter(f => 
+        f.path.startsWith('manifests/') && 
+        (f.path.endsWith('.yaml') || f.path.endsWith('.yml'))
+      );
+
+      if (manifests.length === 0) {
+        container.innerHTML = `<div class="col-span-3 text-sm text-slate-400 p-6">No Kubernetes manifests found in this bundle.</div>`;
+        return;
+      }
+
+      manifests.forEach(m => {
+        const card = document.createElement('div');
+        card.className = `manifest-card bg-slate-900 border border-slate-800 hover:border-teal-700 rounded-2xl p-4 cursor-pointer transition-colors`;
+        card.onclick = () => viewFile(m.path, m.size);
+        
+        const name = m.path.replace('manifests/', '');
+        card.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-semibold text-sm">${name}</div>
+              <div class="text-xs text-slate-500 mt-1">${formatBytes(m.size)}</div>
+            </div>
+            <i class="fa-solid fa-file-code text-xl text-teal-400/70"></i>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    async function viewFile(path, size) {
+      const modal = document.getElementById('file-modal');
+      const content = document.getElementById('modal-content');
+      const pathEl = document.getElementById('modal-file-path');
+      const sizeEl = document.getElementById('modal-file-size');
+
+      pathEl.textContent = path;
+      sizeEl.textContent = formatBytes(size);
+
+      content.innerHTML = `<div class="flex justify-center py-12"><i class="fa-solid fa-spinner fa-spin text-2xl text-teal-400"></i></div>`;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      try {
+        const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
+        const text = await res.text();
+        
+        const isYaml = path.endsWith('.yaml') || path.endsWith('.yml');
+        content.innerHTML = `<pre class="text-xs ${isYaml ? 'text-emerald-300' : 'text-slate-300'} mono whitespace-pre-wrap leading-relaxed max-h-[62vh] overflow-auto">${escapeHtml(text)}</pre>`;
+      } catch (e) {
+        content.innerHTML = `<div class="text-red-400 p-6">Failed to load file content. The file may be binary or too large.</div>`;
+      }
+    }
+
+    function escapeHtml(unsafe) {
+      return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function hideFileModal() {
+      const modal = document.getElementById('file-modal');
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    }
+
+    async function runVerification() {
+      const resultsDiv = document.getElementById('verification-results');
+      const tableDiv = document.getElementById('verify-table');
+      const summaryDiv = document.getElementById('verify-summary');
+
+      resultsDiv.classList.remove('hidden');
+      tableDiv.innerHTML = `<div class="p-8 text-center text-sm text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Verifying checksums... this can take a moment for large bundles.</div>`;
+
+      try {
+        const res = await fetch('/api/verify', { method: 'POST' });
+        const data = await res.json();
+
+        let html = `<table class="w-full"><thead><tr class="text-xs text-slate-400 border-b border-slate-700"><th class="px-4 py-2 text-left">File</th><th class="px-4 py-2 w-20">Status</th></tr></thead><tbody>`;
+
+        let passed = 0, failed = 0;
+
+        data.results.forEach(r => {
+          const status = r.ok ? 
+            `<span class="status-badge bg-emerald-900 text-emerald-300">OK</span>` : 
+            `<span class="status-badge bg-red-900 text-red-300">FAIL</span>`;
+          
+          if (r.ok) passed++; else failed++;
+
+          html += `<tr class="border-b border-slate-800 text-xs">
+            <td class="px-4 py-2 mono text-slate-300 truncate max-w-xs">${r.path}</td>
+            <td class="px-4 py-2">${status}</td>
+          </tr>`;
+        });
+
+        html += `</tbody></table>`;
+        tableDiv.innerHTML = html;
+
+        const statusColor = failed === 0 ? 'text-emerald-400' : 'text-red-400';
+        summaryDiv.innerHTML = `<span class="${statusColor} font-bold">${passed} passed</span> / ${data.results.length} • ${failed} failed`;
+        
+      } catch (e) {
+        tableDiv.innerHTML = `<div class="p-6 text-red-400">Verification failed. ${e}</div>`;
+      }
+    }
+
+    function switchTab(tab) {
+      // Hide all panels
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      // Show target
+      document.getElementById(`panel-${tab}`).classList.remove('hidden');
+
+      // Update tab styles
+      document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('nav-active');
+        btn.classList.add('text-slate-400');
+      });
+      
+      const activeBtn = document.getElementById(`tab-${tab}`);
+      activeBtn.classList.add('nav-active');
+      activeBtn.classList.remove('text-slate-400');
+    }
+
+    // Keyboard support
+    document.addEventListener('keydown', function(e) {
+      if (e.key === '/' && document.activeElement.tagName === 'BODY') {
+        e.preventDefault();
+        const search = document.getElementById('file-search');
+        if (search) {
+          switchTab('files');
+          search.focus();
+        }
+      }
+      if (e.key === 'Escape') {
+        const modal = document.getElementById('file-modal');
+        if (!modal.classList.contains('hidden')) hideFileModal();
+      }
+    });
+
+    // Boot
+    function bootInspector() {
+      initializeTailwind();
+      loadBundleData();
+      
+      // Default to overview
+      switchTab('overview');
+      
+      // Keyboard hint
+      console.log('%c[Aegis Inspector] Press "/" to quickly search files', 'color:#64748b');
+    }
+
+    window.onload = bootInspector;
+  </script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+# gcp-hardened profile (Phase 4)
+# Uses a pre-baked custom GCP image containing NVIDIA drivers + K3s.
+# Enables true zero-NAT boot from the first second.
+
+name: gcp-hardened
+description: "GCP T4 demo using pre-baked golden image (true air-gap from boot)"
+version: "1.1.0-phase4"
+
+target:
+  platform: gcp
+  instance_type: n1-standard-4
+  accelerator: nvidia-tesla-t4
+  count: 1
+  os: "aegis-golden-ubuntu-2204-nvidia-k3s"   # custom image family
+  requires_custom_image: true
+
+resources:
+  gpu: 1
+  memory: "8Gi"
+  cpu: "2"
+
+model:
+  name: phi3:mini
+  family: phi-3-mini-4k-instruct
+
+inference:
+  engine: ollama
+  image: ollama/ollama:latest
+
+mission_control:
+  image: aegis/mission-control:latest
+  port: 8080
+  replicas: 1
+
+registry:
+  enabled: true
+  image: ghcr.io/project-zot/zot:latest
+
+k3s:
+  version: "v1.30.2+k3s1"
+  install_method: preinstalled   # golden image already has it
+
+bundle:
+  include_k3s_airgap: false
+  preload_images_to_containerd: true
+  model_preload: true
+
+template_vars:
+  namespace: aegis
+  ollama_replicas: 1
+  gpu_node_selector:
+    key: "nvidia.com/gpu"
+    value: "true"
+  image_pull_policy: Never
+  use_golden_image: true

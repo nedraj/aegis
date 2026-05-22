@@ -1,0 +1,15 @@
+name: aegis-gcp-iac
+runtime: go
+description: Infrastructure as Code for Project Aegis GCP T4 demo VM (Phase 3)
+backend:
+  url: file://./.pulumi
+config:
+  gcp:project: "your-gcp-project-id"
+  gcp:region: "us-central1"
+  gcp:zone: "us-central1-a"
+
+  # Phase 4 - Golden Image (recommended for true air-gap)
+  # use_golden_image: true
+  # custom_image_family: "aegis-golden-ubuntu-2204-nvidia-k3s"
+
+  # When use_golden_image = true, the VM boots with zero NAT requirement.

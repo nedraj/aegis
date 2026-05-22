@@ -1,0 +1,51 @@
+# airgap-sim profile
+# Generates a completely portable .bundle that can be transferred via USB/SDR/sneakernet
+# into a true zero-internet site. No cloud-init assumptions.
+
+name: airgap-sim
+description: "Fully portable air-gap bundle (USB transfer, no cloud provider)"
+version: "1.0.0"
+
+target:
+  platform: baremetal-or-vm
+  k3s_mode: single-node-airgap
+
+resources:
+  gpu: 1
+  memory: "8Gi"
+  cpu: "4"
+
+model:
+  name: phi3:mini
+  family: phi-3-mini-4k-instruct
+  context_length: 4096
+
+inference:
+  engine: ollama
+  image: ollama/ollama:latest
+
+mission_control:
+  image: aegis/mission-control:latest
+  port: 8080
+
+registry:
+  enabled: true
+  image: ghcr.io/project-zot/zot:latest
+
+k3s:
+  version: "v1.30.2+k3s1"
+  install_method: airgap-binary   # bundle must include k3s + images tar
+
+bundle:
+  include_k3s_airgap: true
+  preload_images_to_containerd: true
+  model_preload: true
+  include_nvidia_runfile: false   # future: bundle NVIDIA-Linux-*.run for true airgap
+
+template_vars:
+  namespace: aegis
+  ollama_replicas: 1
+  gpu_node_selector:
+    key: "nvidia.com/gpu"
+    value: "present"
+  image_pull_policy: Never

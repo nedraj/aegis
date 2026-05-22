@@ -1,0 +1,40 @@
+# Local development stack for Mission Control + Ollama (no GPU required)
+# Usage:
+#   cd examples
+#   docker compose -f docker-compose.local.yml up --build
+# Then: curl -X POST http://localhost:8080/query -d '{"prompt":"Give me a one-sentence status of the comms array."}'
+
+version: "3.8"
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-dev
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    # On first run it will download phi3:mini (~2.2GB). Subsequent runs are instant.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  mission-control:
+    build:
+      context: ../mission-control
+      dockerfile: Dockerfile
+    container_name: mission-control-dev
+    ports:
+      - "8080:8080"
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      MODEL_NAME: phi3:mini
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  ollama-data:
