@@ -1,0 +1,68 @@
+# gcp-vllm profile (Phase 5)
+# Demonstrates vLLM inference engine on GCP T4.
+# Uses OpenAI-compatible vLLM server with local HF model weights for air-gap.
+#
+# IMPORTANT FOR T4 (16GB VRAM):
+#   - Full precision microsoft/Phi-3-mini-4k-instruct uses ~7.6 GB just for weights.
+#   - With KV cache for 4k context you will likely need --max-model-len 2048 or lower.
+#   - For comfortable headroom, use a quantized variant (AWQ/GPTQ) or 4-bit via bitsandbytes.
+#
+# Recommended for users wanting raw vLLM features (paged attention, better throughput, etc).
+
+name: gcp-vllm
+description: "GCP single-node T4 GPU demo using vLLM backend (Phase 5 pluggable inference)"
+version: "1.1.0-phase5"
+
+target:
+  platform: gcp
+  instance_type: n1-standard-4
+  accelerator: nvidia-tesla-t4
+  count: 1
+  os: ubuntu-22.04-lts
+
+resources:
+  gpu: 1
+  memory: "8Gi"
+  cpu: "2"
+
+model:
+  name: phi-3-mini-4k-instruct   # must match the local dir name under /models/ for vLLM --model + requests
+  family: phi-3-mini-4k-instruct
+  context_length: 4096
+  quantization: ""   # for vLLM use --quantization awq or leave blank for fp16/bf16 on T4 (use 2048 ctx)
+
+# Inference backend - Phase 5
+inference:
+  engine: vllm
+  image: vllm/vllm-openai:latest
+  port: 8000
+  service_name: vllm   # results in vllm-deployment.yaml + service vllm
+
+mission_control:
+  image: aegis/mission-control:latest
+  port: 8080
+  replicas: 1
+
+registry:
+  enabled: true
+  image: ghcr.io/project-zot/zot:latest
+  port: 5000
+
+k3s:
+  version: "v1.30.2+k3s1"
+  install_method: preinstalled   # or golden for hardened
+
+bundle:
+  include_k3s_airgap: false
+  preload_images_to_containerd: true
+  model_preload: true
+  # Usage for staging: ENGINE=vllm ./scripts/bundle/prepare-models.sh ./staging
+
+# Template variables
+template_vars:
+  namespace: aegis
+  gpu_node_selector:
+    key: "nvidia.com/gpu"
+    value: "true"
+  image_pull_policy: IfNotPresent
+  model_local_path: "phi-3-mini-4k-instruct"   # dir name under /opt/aegis/models for the HF snapshot

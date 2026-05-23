@@ -1,0 +1,22 @@
+graph TD
+    subgraph "Connected Workstation"
+        A[Setup: Clone + Build CLI] --> B[Generate K8s Manifests]
+        B --> C[Mirror Container Images]
+        C --> D[Download AI Model Weights]
+        D --> E[Package Everything into .bundle]
+    end
+
+    E -->|USB / Disk / scp| F[Transfer to Target Machine]
+
+    subgraph "Air-Gapped Target VM"
+        F --> G[Extract + Run bootstrap.sh]
+        G --> H[Start K3s + Import Images]
+        H --> I[Deploy Aegis Stack]
+        I --> J[Validate: GPU + Local Model + No Egress]
+    end
+
+    J --> K[Remove NAT / External IP]
+    K --> L[Final Proof: Still works with zero egress]
+
+    style E fill:#fff9c4
+    style L fill:#c8e6c9

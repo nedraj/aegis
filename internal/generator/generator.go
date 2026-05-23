@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/template"
 
 	"github.com/aegis/aegis"
@@ -19,13 +20,27 @@ type RenderContext struct {
 	Namespace   string
 
 	// Flattened commonly used values for easy {{ .Foo }} access in templates
-	OllamaImage           string
-	OllamaReplicas        int
-	MissionControlImage   string
+	OllamaImage            string // legacy (populated from Inference when engine=ollama)
+	OllamaReplicas         int
+	MissionControlImage    string
 	MissionControlReplicas int
-	ZotImage              string
-	ModelName             string
-	GPUCount              int
+	ZotImage               string
+	ModelName              string
+	GPUCount               int
+
+	// Phase 5: Pluggable inference engine support
+	InferenceEngine      string // "ollama" | "vllm" | ...
+	InferenceImage       string
+	InferencePort        int
+	InferenceServiceName string // "ollama" or "vllm" (matches deployment/service name)
+	InferenceReplicas    int
+	ModelQuantization    string
+	ModelLocalPath       string // for vLLM: HF snapshot dir under /models (e.g. "phi-3-mini-4k-instruct")
+
+	// Phase 6: Multi-node cluster support
+	ClusterMode string // "single-node" | "multi-node"
+
+
 
 	GPUNodeSelectorKey   string
 	GPUNodeSelectorValue string
@@ -52,6 +67,24 @@ func Generate(p *profiles.Profile, outDir string) error {
 	if len(tplFiles) == 0 {
 		return fmt.Errorf("no templates found in embed (pattern: %s)", assets.TemplateGlob)
 	}
+
+	// Phase 5: Filter inference deployment templates to only the one matching the profile's engine.
+	// This prevents rendering both ollama-deployment.yaml and vllm-deployment.yaml for a given profile.
+	filtered := make([]string, 0, len(tplFiles))
+	for _, pth := range tplFiles {
+		base := filepath.Base(pth)
+		if strings.Contains(base, "-deployment.yaml.tpl") {
+			// inference deployment files are named <engine>-deployment.yaml.tpl (ollama-*, vllm-*)
+			if strings.Contains(base, "ollama-deployment") && ctx.InferenceEngine != "ollama" {
+				continue
+			}
+			if strings.Contains(base, "vllm-deployment") && ctx.InferenceEngine != "vllm" {
+				continue
+			}
+		}
+		filtered = append(filtered, pth)
+	}
+	tplFiles = filtered
 
 	for _, tplPath := range tplFiles {
 		content, err := fs.ReadFile(assets.FS, tplPath)
@@ -112,6 +145,44 @@ func buildContext(p *profiles.Profile) RenderContext {
 		pullPolicy = v
 	}
 
+	// Phase 5 inference engine defaults + derivation
+	engine := p.Inference.Engine
+	if engine == "" {
+		engine = "ollama"
+	}
+	infPort := p.Inference.Port
+	if infPort == 0 {
+		if engine == "vllm" {
+			infPort = 8000
+		} else {
+			infPort = 11434
+		}
+	}
+	svcName := p.Inference.ServiceName
+	if svcName == "" {
+		svcName = engine // "ollama" or "vllm" -> service/deployment named after engine for simplicity
+	}
+	infReplicas := 1
+	if p.MissionCtrl.Replicas > 0 {
+		// inference replicas typically 1 for GPU
+	}
+	quant := p.Model.Quantization
+	if quant == "" && engine == "ollama" {
+		quant = "q4_0"
+	}
+
+	modelLocalPath := "phi-3-mini-4k-instruct"
+	if v, ok := p.TemplateVars["model_local_path"].(string); ok && v != "" {
+		modelLocalPath = v
+	} else if strings.Contains(strings.ToLower(p.Model.Family), "phi") {
+		modelLocalPath = "phi-3-mini-4k-instruct"
+	}
+
+	clusterMode := p.Target.ClusterMode
+	if clusterMode == "" {
+		clusterMode = "single-node"
+	}
+
 	return RenderContext{
 		ProfileName: p.Name,
 		Namespace:   ns,
@@ -123,6 +194,17 @@ func buildContext(p *profiles.Profile) RenderContext {
 		ZotImage:               p.Registry.Image,
 		ModelName:              p.Model.Name,
 		GPUCount:               p.Resources.GPU,
+
+		// Phase 5 pluggable inference
+		InferenceEngine:      engine,
+		InferenceImage:       p.Inference.Image,
+		InferencePort:        infPort,
+		InferenceServiceName: svcName,
+		InferenceReplicas:    infReplicas,
+		ModelQuantization:    quant,
+		ModelLocalPath:       modelLocalPath,
+
+		ClusterMode: clusterMode,
 
 		GPUNodeSelectorKey:   gpuKey,
 		GPUNodeSelectorValue: gpuVal,

@@ -32,6 +32,11 @@ type Target struct {
 	Count       int    `yaml:"count,omitempty"`
 	OS          string `yaml:"os,omitempty"`
 	K3sMode     string `yaml:"k3s_mode,omitempty"`
+
+	// Phase 6: Multi-node support
+	ClusterMode string                 `yaml:"cluster_mode,omitempty"` // "single-node" | "multi-node"
+	ControlPlane map[string]interface{} `yaml:"control_plane,omitempty"`
+	Worker       map[string]interface{} `yaml:"worker,omitempty"`
 }
 
 type Resources struct {
@@ -48,9 +53,10 @@ type Model struct {
 }
 
 type Inference struct {
-	Engine string `yaml:"engine"`
-	Image  string `yaml:"image"`
-	Port   int    `yaml:"port"`
+	Engine      string `yaml:"engine"`
+	Image       string `yaml:"image"`
+	Port        int    `yaml:"port"`
+	ServiceName string `yaml:"service_name,omitempty"`
 }
 
 type MissionControl struct {

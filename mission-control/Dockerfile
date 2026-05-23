@@ -19,6 +19,9 @@ COPY app.py .
 ENV PATH=/root/.local/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    # Phase 5: prefer the new pluggable vars; fallbacks keep old compose / k8s manifests working
+    INFERENCE_ENGINE=ollama \
+    INFERENCE_URL=http://ollama:11434 \
     OLLAMA_URL=http://ollama:11434 \
     MODEL_NAME=phi3:mini
 

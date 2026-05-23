@@ -29,8 +29,17 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # Phase 5 pluggable inference — these are the preferred variables
+      INFERENCE_ENGINE: ollama
+      INFERENCE_URL: http://ollama:11434
+      # Legacy fallbacks (still supported by app.py)
       OLLAMA_URL: http://ollama:11434
       MODEL_NAME: phi3:mini
+
+      # To experiment with vLLM locally (CPU, very slow, needs huggingface_hub + model snapshot):
+      # 1. docker run -v $PWD/staging/models:/models -p 8000:8000 vllm/vllm-openai:latest \
+      #      --model /models/phi-3-mini-4k-instruct --served-model-name phi-3-mini-4k-instruct --trust-remote-code
+      # 2. Set INFERENCE_ENGINE=vllm and INFERENCE_URL=http://host.docker.internal:8000 (or use a vllm service in this compose)
     depends_on:
       ollama:
         condition: service_healthy

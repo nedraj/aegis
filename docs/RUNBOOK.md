@@ -2,12 +2,44 @@
 
 This document gives the **exact commands** an operator runs on a connected workstation to produce a working air-gapped Phi-3 inference node on GCP.
 
-> Prerequisites
-> - Go 1.23+
-> - Docker (with ability to pull public images)
-> - Python 3.11+
-> - `gcloud` authenticated + Pulumi CLI
-> - GCP project with `n1-standard-4` + T4 GPU quota in a zone that has T4s (us-central1-a, etc.)
+## Operator Journey at a Glance
+
+```mermaid
+graph TD
+    subgraph "Connected Workstation"
+        A[Setup: Clone + Build CLI] --> B[Generate K8s Manifests]
+        B --> C[Mirror Container Images]
+        C --> D[Download AI Model Weights]
+        D --> E[Package Everything into .bundle]
+    end
+
+    E -->|USB / Disk / scp| F[Transfer to Target Machine]
+
+    subgraph "Air-Gapped Target"
+        F --> G[Extract Bundle + Run bootstrap.sh]
+        G --> H[Start K3s + Import Images + Models]
+        H --> I[Deploy Inference Stack]
+        I --> J[Validate: GPU visible + Model local + No internet]
+    end
+
+    J --> K[Remove NAT / External IP]
+    K --> L[Final Proof: Still works with zero egress]
+
+    style E fill:#fff9c4
+    style L fill:#c8e6c9
+```
+
+> This diagram shows the full journey. The detailed commands for each step are below.
+
+---
+
+## Prerequisites
+
+- Go 1.23+
+- Docker (with ability to pull public images)
+- Python 3.11+
+- `gcloud` authenticated + Pulumi CLI
+- GCP project with `n1-standard-4` + T4 GPU quota in a zone that has T4s (us-central1-a, etc.)
 
 ---
 

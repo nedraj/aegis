@@ -1,9 +1,32 @@
-# Project Aegis - Implementation Plan (Phases 1-4 Complete)
+# Project Aegis — Implementation Roadmap
 
-**Status:** All core phases (1-4) implemented. Phase 4 delivers true zero-NAT capability via custom golden images.
+> **New here?** This page is the technical plan.  
+For a gentler introduction, read:
+- [QUICKSTART.md](../QUICKSTART.md) (5-minute explainer)
+- [README.md](../README.md)
 
-**Date:** 2026-05 (initial build)
+**Current Status (May 2026)**
+- Phases 1–4: Complete
+- Phase 5: Code complete (Ollama + vLLM both work via the same system)
+- Phase 6: Early scaffolding (multi-node + Longhorn)
+
+**Date:** 2026-05 (initial build)  
 **Repo Root:** `/aegis` (this workspace)
+
+### Phases at a Glance
+
+```mermaid
+timeline
+    title Aegis Maturity Journey
+    Phase 1 : CLI + Generator
+    Phase 2 : AI Stack (Ollama + Mission Control)
+    Phase 3 : Bundle + IaC + Air-gap Bootstrap
+    Phase 4 : Golden Images (True Zero-NAT)
+    Phase 5 : Pluggable Engines (Ollama + vLLM)
+    Phase 6 : Multi-Node + Longhorn
+    Phase 7 : Security (SBOM + Signing)
+    Phase 8 : Better Tooling
+```
 
 ## Defined Phases (Inferred from req.md + Practical PoC Constraints)
 
@@ -170,8 +193,13 @@
 │       └── main.go             # GCP resources + cloud-init user-data generator
 ├── docs/
 │   ├── PLAN.md                 # This file
+│   ├── TESTING.md              # End-to-end test/QA/eval plan + Phase 5 matrix
+│   ├── grok-build-usage.md     # Effective prompting patterns for Grok Build TUI
 │   ├── RUNBOOK.md              # Exact operator commands for demo
 │   └── architecture.md
+├── AGENTS.md                   # AI agent rules & project conventions (read by Grok/Claude/etc.)
+├── grok-build-tutorial.md      # Complete tutorial for the Grok Build TUI
+├── grok-build-usage.md         # Effective prompting patterns (companion to the tutorial)
 ├── profiles/                   # Source YAML profiles (copied into embed)
 ├── go.mod
 ├── README.md
@@ -194,10 +222,102 @@ After Phase 3 we will have a **minimum viable PoC** that a developer with GCP + 
 | 2     | ✅ Done    | Full K8s manifests, Mission Control FastAPI, Ollama |
 | 3     | ✅ Done    | Bundle pipeline, Pulumi IaC, bootstrap, RUNBOOK |
 | **4** | **✅ Done** | **Golden Image (Packer + 5 provisioners), gcp-hardened profile, zero-NAT Pulumi support, comprehensive ONBOARDING.md with 5 professional diagrams** |
+| **5** | **Code Complete** | **Pluggable vLLM + Ollama (unified OpenAI /v1), gcp-vllm profile, engine-aware everything, T4-tuned defaults. Real runtime validation on hardware is the last step.** |
+| **6** | **Scaffolded** | **Multi-node K3s + Longhorn distributed storage** (profile draft + generator support started) |
 
-## Future Phases (Out of Scope for v0.1)
-- Phase 5: Full vLLM + TensorRT-LLM path + quantization profiles
-- Phase 6: Multi-node edge cluster profile + storage (Longhorn)
+## Phase 5: Pluggable Inference Backends (vLLM + Quantization) — IN PROGRESS
+**Status:** Started post-Phase 4 (May 2026). Core goal: make inference engine first-class (ollama | vllm), with profile-driven selection, unified Mission Control, and air-gap model prep for both.
+
+**Goal:**
+- Allow `inference.engine: "vllm"` (or "ollama") in any profile.
+- vLLM deployment with OpenAI-compatible API, local HF weights, suitable args for T4 (16GB) + Phi-3 or other quants.
+- Single Mission Control that speaks OpenAI /v1 to either backend (no engine-specific code in API layer).
+- Quantization profiles (e.g. 4bit via Ollama q4_0, or vLLM --quantization, or GGUF via llama.cpp fallback later).
+- Preserve 100% backward compat for existing ollama profiles.
+- Bundle + bootstrap scripts detect engine and stage correct image + weights.
+
+**Key Architecture Decisions:**
+- Inference service/deployment name abstracted via `{{ .InferenceServiceName }}` (ollama or vllm) but we standardize on "inference" label + per-engine service for clarity.
+- All inference pods get common label `aegis/component: inference` for NetworkPolicy + discovery.
+- Mission Control env: `INFERENCE_ENGINE`, `INFERENCE_URL`, `MODEL_NAME`. Uses only `/v1/chat/completions` + `/v1/models`.
+- Model storage convention:
+  - ollama: /opt/aegis/models  (Ollama blob layout)
+  - vllm: /opt/aegis/models/<model-slug>/  (HF snapshot with config.json + *.safetensors)
+- prepare-models.sh becomes engine-aware (calls different downloaders).
+- New profile: `gcp-vllm` (and `airgap-vllm-sim` later) demonstrating vLLM on T4 with appropriate quant.
+
+**Deliverables (Phase 5 MVP):**
+- [x] Extended `Profile.Inference` + `RenderContext` with Engine, ServiceName, Port, Quant
+- [x] `manifests/k8s/vllm-deployment.yaml.tpl` (T4-friendly defaults, local HF weights, OpenAI compat)
+- [x] Updated kustomization, bootstrap.sh, mission-control templates with conditionals
+- [x] Mission Control refactored for dual-backend (OpenAI unified /v1 path)
+- [x] Engine-aware `mirror-images.sh` + `prepare-models.sh` (robust HF snapshot for vLLM)
+- [x] New `profiles/gcp-vllm.yaml` with T4 quantization guidance + updated docs
+- [x] `aegis-cli generate --profile gcp-vllm` produces valid manifests
+- [x] TESTING.md created with full E2E/QA/eval plan + Phase 5 test matrix
+- [x] Polish pass on vLLM path (prepare script robustness, T4 defaults, profile guidance) — May 2026
+
+**Tech Notes:**
+- vLLM image: `vllm/vllm-openai:latest` (or `ghcr.io/vllm-project/vllm-openai:latest` for stability)
+- For T4 + phi3-mini-4k: use `--max-model-len 2048 --gpu-memory-utilization 0.85 --trust-remote-code`. Full fp16 works; 4-bit via bitsandbytes or pre-quantized AWQ model recommended for headroom.
+- Quantization field in profile now drives CLI flags in the generated deployment (e.g. vllm args or ollama quant in model name).
+- TensorRT-LLM deferred to Phase 5.2 (requires more complex build, TensorRT engine export).
+
+**Exit Criteria:**
+- Both `gcp-demo` (ollama) and `gcp-vllm` generate + `kubectl apply` conceptually valid.
+- Mission Control /query works identically against either backend in the cluster.
+- Bundle includes correct inference image for chosen engine.
+- No regressions in Phase 1-4 flows.
+
+---
+## Phase 6: Multi-Node K3s Cluster + Longhorn Distributed Storage — NOT STARTED
+
+**Goal:**
+Enable true multi-node deployments of Aegis for higher availability, larger aggregate GPU capacity, and production-like edge clusters while preserving the air-gap and profile-driven philosophy.
+
+**Key Challenges for Multi-Node in Air-Gap Context:**
+- K3s cluster formation (server + agent nodes) must be fully air-gappable (token distribution, no external discovery).
+- Workload placement: Inference pods should run on GPU nodes; control-plane components should be schedulable on non-GPU nodes if desired.
+- Persistent storage for models must be available on all GPU nodes → Longhorn (or similar) becomes necessary.
+- Bundle + bootstrap process must support "join an existing cluster" vs "bootstrap a new cluster".
+- NetworkPolicy, Service discovery, and DNS must work across nodes.
+
+**Proposed Architecture Decisions:**
+- Add `target.cluster_mode: "single-node" | "multi-node"` (or repurpose `k3s.k3s_mode`).
+- New profile family: `gcp-multi.yaml`, `airgap-multi.yaml`.
+- Separate node roles via labels:
+  - `aegis/node-role: control-plane`
+  - `aegis/node-role: gpu-worker`
+- Longhorn deployed as the default StorageClass for model PVCs (instead of hostPath).
+- K3s installation split: first node = server, subsequent nodes = agents that join via a pre-shared token embedded in the bundle.
+- Generator produces different bootstrap scripts or a `join.sh` for worker nodes.
+- Inference deployments get stronger node affinity / anti-affinity rules.
+
+**Deliverables (Phase 6 MVP):**
+- [x] Detailed design doc / section in PLAN.md (this section)
+- [x] Extend `Profile.Target` + generator `RenderContext` with `ClusterMode`
+- [x] New profile scaffold: `profiles/gcp-multi.yaml`
+- [ ] Longhorn deployment manifest template (or conditional inclusion)
+- [ ] Updated bootstrap/join scripts that support multi-node K3s cluster formation from the bundle
+- [ ] Example Pulumi or manual instructions for provisioning 1 control + 2 GPU workers on GCP
+- [ ] Update TESTING.md with multi-node validation matrix
+- [ ] End-to-end test: 3-node cluster boots, inference runs on a worker, Longhorn volume is used for models
+
+**Tech Notes:**
+- Longhorn requires a minimum of 3 nodes for HA (or can run in non-HA mode on 2).
+- For T4 edge use cases, many deployments will be 1 control + 1–3 GPU workers.
+- Model PVCs will move from `hostPath` to `Longhorn` `StorageClass`.
+- K3s embedded etcd (or external etcd) considerations for >1 server.
+
+**Exit Criteria:**
+- User can run `aegis-cli generate --profile gcp-multi` and get manifests that conceptually deploy to a multi-node K3s cluster.
+- A 3-node cluster (1 control + 2 workers) can be stood up from a single bundle.
+- Inference workloads land on GPU-labeled nodes.
+- Models are served from Longhorn-backed PVCs.
+
+---
+
+## Future Phases (Post 6)
 - Phase 7: SBOM + signed bundles + cosign + SBOM verification in bootstrap
 - Phase 8: Web UI for bundle inspection + one-click validation reports  ✅ (implemented as `aegis-cli inspect`)
 

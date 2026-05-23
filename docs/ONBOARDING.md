@@ -37,9 +37,31 @@ The system is **profile-driven** and **deterministic** — the same profile alwa
 
 ## Architecture Overview
 
-![Aegis High-Level Architecture](../images/aegis-architecture-overview.jpg)
+### Simple Text Diagram (Mermaid)
 
-**Key Insight**: The `.bundle` is the only thing that crosses the air-gap boundary. After transfer, the target environment can (and should) have all external routes removed.
+```mermaid
+graph TD
+    subgraph "Connected Side"
+        A[Developer Laptop] -->|aegis-cli generate| B[Manifests]
+        A -->|Mirror images + Download models| C[Staging Folder]
+        B & C -->|aegis-cli bundle| D[One .bundle File]
+    end
+
+    D -->|USB / Sneakernet| E[Air-Gapped Machine]
+
+    subgraph "Air-Gapped Side"
+        E --> F[K3s Cluster]
+        F --> G[Ollama or vLLM + Phi-3]
+        F --> H[Mission Control API]
+    end
+
+    style D fill:#fff9c4
+    style G fill:#c8e6c9
+```
+
+**Key Idea**: Everything the target machine needs lives inside the single `.bundle` file. Once transferred, you can (and should) completely isolate the machine from the internet.
+
+> The old image version is still available in the `docs/images/` folder for those who prefer it.
 
 ---
 
@@ -82,6 +104,8 @@ cd deploy
 
 make build
 make test-local          # uses examples/docker-compose.local.yml
+make test-phase5         # generator smoke for both Ollama and vLLM (Phase 5)
+cat TESTING.md           # full test/QA/eval plan + matrix
 ```
 
 In another terminal:
@@ -228,7 +252,8 @@ This diagram shows the ideal hardened path that most real deployments should fol
 - Best proof: launch the instance with **no external IP** and no Cloud NAT at all (`access_configs: []`). If it boots and inference works, you have succeeded.
 
 **Q: Can I use this with vLLM instead of Ollama?**
-- Not in the current profiles, but the architecture supports it. Phase 5 will add vLLM + quantized GGUF/EXL2 options.
+- Yes! Phase 5 added full support. Use `--profile gcp-vllm` (or create your own with `inference.engine: vllm`).
+  Mission Control now speaks the same OpenAI `/v1` API to either backend. See `profiles/gcp-vllm.yaml` and `manifests/k8s/vllm-deployment.yaml.tpl`.
 
 **Q: Bundle is too big to scp (~6-8 GB)**
 - Recommended: attach a second persistent disk (500 GB) to the instance in Pulumi, format it, and copy the bundle to that disk from a jump host that has internet. Then detach the disk and attach it to the air-gapped VM.
@@ -266,4 +291,4 @@ The inspector is 100% self-contained and works great for air-gap bundle QA befor
 
 Welcome to Project Aegis.
 
-*Last updated: Phase 4 implementation — May 2026*
+*Last updated: Phase 5 (vLLM + pluggable inference) — May 2026*

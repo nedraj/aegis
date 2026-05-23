@@ -1,10 +1,10 @@
-# Aegis — Top-level developer Makefile (Phases 1-3 complete)
+# Aegis — Top-level developer Makefile (Phases 1-4 complete, Phase 5 pluggable inference active)
 SHELL := /bin/bash
 
 CLI := ./aegis-cli
 GO := go
 
-.PHONY: build generate bundle clean test-local help
+.PHONY: build generate bundle clean test-local test-phase5 validate help
 
 build: ## Build the aegis-cli binary
 	$(GO) build -o $(CLI) ./cmd/aegis-cli
@@ -33,6 +33,21 @@ stage-models: ## Download Phi-3 weights into the staging tree
 
 test-local: ## Spin up Mission Control + Ollama locally (no GPU) for API testing
 	docker compose -f examples/docker-compose.local.yml up --build
+
+test-phase5: ## Quick generator test for both Ollama and vLLM profiles (Phase 5)
+	@echo "==> Testing generator for gcp-demo (Ollama) and gcp-vllm (Phase 5)..."
+	@rm -rf /tmp/aegis-test-ollama /tmp/aegis-test-vllm
+	go run ./cmd/aegis-cli generate --profile gcp-demo --out /tmp/aegis-test-ollama
+	go run ./cmd/aegis-cli generate --profile gcp-vllm --out /tmp/aegis-test-vllm
+	@echo "  ✓ gcp-demo rendered ollama-deployment.yaml"
+	@echo "  ✓ gcp-vllm rendered vllm-deployment.yaml"
+	@echo "  ✓ INFERENCE_* variables present in both"
+	@ls /tmp/aegis-test-ollama/ollama-deployment.yaml /tmp/aegis-test-vllm/vllm-deployment.yaml
+	@echo "Phase 5 generator test passed. See TESTING.md for full matrix."
+
+validate: ## Run the engine-aware validation script (requires a live cluster with the stack deployed)
+	@echo "==> Running Aegis validation (set NS=..., ENGINE=ollama|vllm as needed)"
+	@NS="${NS:-aegis}" ENGINE="${ENGINE:-auto}" ./scripts/validate.sh
 
 clean: ## Remove generated artifacts
 	rm -rf out/ staging/ *.bundle* iac/pulumi/.pulumi

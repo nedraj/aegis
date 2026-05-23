@@ -1,0 +1,67 @@
+# gcp-multi profile (Phase 6 - Early Draft)
+# Multi-node K3s cluster on GCP with Longhorn for distributed storage.
+# 1 control-plane node + multiple GPU worker nodes.
+# This is an initial scaffold — full implementation is tracked in PLAN.md Phase 6.
+
+name: gcp-multi
+description: "GCP multi-node T4 cluster (1 control-plane + N GPU workers) with Longhorn storage (Phase 6)"
+version: "0.1.0-phase6-draft"
+
+target:
+  platform: gcp
+  cluster_mode: multi-node          # NEW for Phase 6
+  control_plane:
+    instance_type: n1-standard-4
+    count: 1
+  worker:
+    instance_type: n1-standard-4
+    accelerator: nvidia-tesla-t4
+    count: 2                        # default 2 GPU workers
+  os: ubuntu-22.04-lts
+
+resources:
+  gpu: 1                            # per worker
+  memory: "8Gi"
+  cpu: "2"
+
+model:
+  name: phi3:mini
+  family: phi-3-mini-4k-instruct
+  context_length: 4096
+
+inference:
+  engine: ollama                    # or vllm
+  image: ollama/ollama:latest
+  port: 11434
+
+mission_control:
+  image: aegis/mission-control:latest
+  port: 8080
+  replicas: 1
+
+registry:
+  enabled: true
+  image: ghcr.io/project-zot/zot:latest
+  port: 5000
+
+k3s:
+  version: "v1.30.2+k3s1"
+  install_method: multi-node        # server on first node, agents join via token
+
+bundle:
+  include_k3s_airgap: false
+  preload_images_to_containerd: true
+  model_preload: true
+  # Future: support for distributing the K3s join token securely
+
+template_vars:
+  namespace: aegis
+  gpu_node_selector:
+    key: "aegis/node-role"
+    value: "gpu-worker"
+  control_plane_selector:
+    key: "aegis/node-role"
+    value: "control-plane"
+  image_pull_policy: IfNotPresent
+  longhorn_enabled: true
+  # ClusterMode is now derived from target.cluster_mode in the generator (Phase 6)

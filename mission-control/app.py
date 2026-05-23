@@ -4,15 +4,16 @@ Mission Control API - Aegis Air-Gapped Inference Orchestrator
 
 This service is the ONLY allowed egress point from the "operator" perspective.
 It is deliberately coded to NEVER contact the public internet, OpenAI, Gemini,
-or any external LLM provider. All requests are routed to the local Ollama
-instance running inside the same Kubernetes namespace.
+or any external LLM provider. All requests are routed to the local inference
+backend (Ollama or vLLM) inside the same Kubernetes namespace.
 
 Endpoints:
   GET  /health
   GET  /model-info
   POST /query   {"prompt": "...", "max_tokens": 256}
 
-Designed for Phi-3-Mini-4k-Instruct via Ollama (OpenAI-compatible /v1).
+Phase 5: Supports both Ollama and vLLM via the OpenAI-compatible /v1 API.
+Backend selected via INFERENCE_ENGINE + INFERENCE_URL environment variables.
 """
 
 import os
@@ -21,17 +22,18 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
+INFERENCE_URL = os.getenv("INFERENCE_URL") or os.getenv("OLLAMA_URL", "http://ollama:11434")
+INFERENCE_ENGINE = os.getenv("INFERENCE_ENGINE", "ollama").lower()
 MODEL_NAME = os.getenv("MODEL_NAME", "phi3:mini")
 TIMEOUT = 120.0
 
 app = FastAPI(
     title="Aegis Mission Control",
-    description="Air-gapped AI inference gateway. No external network access permitted.",
-    version="1.0.0-phase2",
+    description="Air-gapped AI inference gateway. No external network access permitted. Supports ollama and vllm backends via OpenAI-compatible API.",
+    version="1.1.0-phase5",
 )
 
-client = httpx.Client(base_url=OLLAMA_URL, timeout=TIMEOUT)
+client = httpx.Client(base_url=INFERENCE_URL, timeout=TIMEOUT)
 
 
 class QueryRequest(BaseModel):
@@ -49,44 +51,72 @@ class QueryResponse(BaseModel):
 
 @app.get("/health")
 def health():
+    """
+    Health check that works for both Ollama and vLLM via OpenAI /v1/models.
+    Falls back to engine-specific paths if needed.
+    """
     try:
-        r = client.get("/api/tags")
+        # Unified: both vLLM and Ollama support /v1/models (OpenAI compat)
+        r = client.get("/v1/models")
         r.raise_for_status()
+        models = r.json().get("data", [])
+        model_names = [m.get("id") for m in models]
         return {
             "status": "ok",
-            "ollama_reachable": True,
+            "inference_reachable": True,
+            "engine": INFERENCE_ENGINE,
             "model": MODEL_NAME,
+            "available_models": model_names,
             "airgap_enforced": True,
         }
     except Exception as e:
-        return {
-            "status": "degraded",
-            "ollama_reachable": False,
-            "error": str(e),
-            "airgap_enforced": True,
-        }
+        # Fallback for older Ollama without /v1 or network hiccup
+        try:
+            r2 = client.get("/api/tags")
+            r2.raise_for_status()
+            return {
+                "status": "ok",
+                "inference_reachable": True,
+                "engine": INFERENCE_ENGINE,
+                "model": MODEL_NAME,
+                "note": "used ollama native /api/tags fallback",
+                "airgap_enforced": True,
+            }
+        except Exception as e2:
+            return {
+                "status": "degraded",
+                "inference_reachable": False,
+                "engine": INFERENCE_ENGINE,
+                "error": str(e),
+                "fallback_error": str(e2),
+                "airgap_enforced": True,
+            }
 
 
 @app.get("/model-info")
 def model_info():
+    backend = INFERENCE_ENGINE
+    note = "Weights loaded exclusively from persistent volume /opt/aegis/models"
+    if backend == "vllm":
+        note = "HF snapshot (config.json + safetensors) loaded from /models via hostPath. --trust-remote-code enabled."
     return {
         "model": MODEL_NAME,
         "family": "phi-3-mini-4k-instruct",
         "parameters": "3.8B",
         "context": 4096,
-        "backend": "ollama",
+        "backend": backend,
         "location": "local-only (air-gapped)",
-        "note": "Weights loaded exclusively from persistent volume /opt/aegis/models",
+        "note": note,
     }
 
 
 @app.post("/query", response_model=QueryResponse)
 def query(req: QueryRequest):
     """
-    Execute a query against the locally running Phi-3 model.
+    Execute a query against the locally running model (Ollama or vLLM).
+    Uses the unified OpenAI-compatible /v1/chat/completions API for both engines.
     This path contains ZERO references to external APIs.
     """
-    # Use Ollama's OpenAI-compatible chat endpoint for best results with Phi-3
     payload = {
         "model": MODEL_NAME,
         "messages": [
@@ -101,20 +131,19 @@ def query(req: QueryRequest):
             },
             {"role": "user", "content": req.prompt},
         ],
-        "options": {
-            "num_predict": req.max_tokens,
-            "temperature": req.temperature,
-        },
+        "max_tokens": req.max_tokens,
+        "temperature": req.temperature,
         "stream": False,
     }
 
     try:
-        resp = client.post("/api/chat", json=payload)
+        resp = client.post("/v1/chat/completions", json=payload)
         resp.raise_for_status()
         data = resp.json()
-        content = data.get("message", {}).get("content", "(no content)")
-        # Very rough token estimate
-        tokens = len(content.split()) * 1.3
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "(no content)")
+        # Rough token estimate from usage if present
+        usage = data.get("usage", {})
+        tokens = usage.get("completion_tokens") or (len(content.split()) * 1.3)
     except httpx.HTTPError as e:
         raise HTTPException(
             status_code=502,
@@ -124,8 +153,8 @@ def query(req: QueryRequest):
     return QueryResponse(
         response=content.strip(),
         model=MODEL_NAME,
-        backend="ollama-local",
-        tokens_used=int(tokens),
+        backend=f"{INFERENCE_ENGINE}-local",
+        tokens_used=int(tokens) if isinstance(tokens, (int, float)) else int(tokens),
     )
 
 

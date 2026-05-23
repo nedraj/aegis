@@ -1,0 +1,17 @@
+graph TD
+    subgraph "Connected Side"
+        A[Developer Laptop] -->|aegis-cli generate| B[Manifests]
+        A -->|Mirror images + Download models| C[Staging Folder]
+        B & C -->|aegis-cli bundle| D[One .bundle File]
+    end
+
+    D -->|USB / Sneakernet| E[Air-Gapped Machine]
+
+    subgraph "Air-Gapped Side"
+        E --> F[K3s Cluster]
+        F --> G[Ollama or vLLM + Phi-3]
+        F --> H[Mission Control API]
+    end
+
+    style D fill:#fff9c4
+    style G fill:#c8e6c9
