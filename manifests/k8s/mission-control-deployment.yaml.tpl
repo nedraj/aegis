@@ -24,8 +24,10 @@ spec:
             - containerPort: 8080
               name: http
           env:
-            - name: OLLAMA_URL
-              value: "http://ollama.{{ .Namespace }}.svc.cluster.local:11434"
+            - name: INFERENCE_ENGINE
+              value: "{{ .InferenceEngine }}"
+            - name: INFERENCE_URL
+              value: "http://{{ .InferenceServiceName }}.{{ .Namespace }}.svc.cluster.local:{{ .InferencePort }}"
             - name: MODEL_NAME
               value: "{{ .ModelName }}"
           resources:
@@ -68,17 +70,18 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # Only allow DNS and traffic to ollama inside namespace
+    # Only allow DNS and traffic to the inference backend (ollama or vllm) inside namespace.
+    # Phase 5: uses common aegis/component label + engine-specific port.
     - to:
         - namespaceSelector:
             matchLabels:
               aegis/project: "true"
         - podSelector:
             matchLabels:
-              app: ollama
+              aegis/component: inference
       ports:
         - protocol: TCP
-          port: 11434
+          port: {{ .InferencePort }}
     - to:
         - namespaceSelector: {}
           podSelector:

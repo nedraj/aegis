@@ -60,3 +60,4 @@ The project is successful if, upon deployment, the following can be executed via
   /manifests/k8s        # Embedded K8s templates (vLLM, Registry, Mission Control)
   /docs                 # Architectural trade-off documents
   requirements.md       # This file
+  ```

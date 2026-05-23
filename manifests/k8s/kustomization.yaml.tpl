@@ -5,7 +5,11 @@ namespace: {{ .Namespace }}
 
 resources:
   - namespace.yaml
+  {{- if eq .InferenceEngine "vllm" }}
+  - vllm-deployment.yaml
+  {{- else }}
   - ollama-deployment.yaml
+  {{- end }}
   - mission-control-deployment.yaml
   - nvidia-device-plugin.yaml
   - zot-registry.yaml

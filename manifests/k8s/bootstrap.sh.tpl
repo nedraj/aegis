@@ -39,9 +39,13 @@ echo "==> Applying NVIDIA device plugin..."
 kubectl apply -f "${MANIFEST_DIR}/nvidia-device-plugin.yaml" || true
 
 # 5. Deploy the Aegis stack
-echo "==> Applying Aegis workloads (namespace, ollama, mission-control, zot)..."
+echo "==> Applying Aegis workloads (namespace, {{ .InferenceEngine }}, mission-control, zot)..."
 kubectl apply -f "${MANIFEST_DIR}/namespace.yaml"
+{{- if eq .InferenceEngine "vllm" }}
+kubectl apply -f "${MANIFEST_DIR}/vllm-deployment.yaml"
+{{- else }}
 kubectl apply -f "${MANIFEST_DIR}/ollama-deployment.yaml"
+{{- end }}
 kubectl apply -f "${MANIFEST_DIR}/mission-control-deployment.yaml"
 kubectl apply -f "${MANIFEST_DIR}/zot-registry.yaml" || true
 
@@ -52,8 +56,12 @@ kubectl -n aegis get pods -o wide || true
 
 # 7. Model population note
 if [ -d "${MODEL_DIR}" ] && [ "$(ls -A ${MODEL_DIR})" ]; then
-  echo "==> Models present in ${MODEL_DIR}. They will be used by the Ollama pod via hostPath."
-  echo "    (Ollama container will see them at /root/.ollama/models)"
+  if [ "{{ .InferenceEngine }}" = "vllm" ]; then
+    echo "==> Models present in ${MODEL_DIR}. They will be used by the vLLM pod via hostPath /models (HF snapshot layout expected)."
+  else
+    echo "==> Models present in ${MODEL_DIR}. They will be used by the Ollama pod via hostPath."
+    echo "    (Ollama container will see them at /root/.ollama/models)"
+  fi
 fi
 
 echo ""

@@ -15,6 +15,7 @@ spec:
     metadata:
       labels:
         app: ollama
+        aegis/component: inference
         nvidia.com/gpu: "true"
     spec:
       nodeSelector:
@@ -24,7 +25,7 @@ spec:
           image: {{ .OllamaImage }}
           imagePullPolicy: {{ .ImagePullPolicy }}
           ports:
-            - containerPort: 11434
+            - containerPort: {{ .InferencePort }}
               name: api
           env:
             - name: OLLAMA_HOST
@@ -47,7 +48,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /
-              port: 11434
+              port: {{ .InferencePort }}
             initialDelaySeconds: 30
             periodSeconds: 10
       volumes:
@@ -67,7 +68,7 @@ spec:
   selector:
     app: ollama
   ports:
-    - port: 11434
-      targetPort: 11434
+    - port: {{ .InferencePort }}
+      targetPort: {{ .InferencePort }}
       name: api
   type: ClusterIP
