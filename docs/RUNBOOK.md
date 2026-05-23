@@ -65,14 +65,26 @@ You now have ready-to-apply (or ready-to-bundle) K8s YAMLs + `bootstrap.sh`.
 
 ## 3. Phase 3 — Create the portable bundle (the "foolproof" part)
 
+The recommended way to stage everything is:
+
 ```bash
-# 3a. Pull & export every container image (≈ 3-4 GB total)
-bash scripts/bundle/mirror-images.sh ./staging
+# Stage all artifacts needed for a complete, self-contained bundle
+make stage-all          # This runs stage-images + stage-models + stage-mission-control
+```
 
-# 3b. Pull Phi-3-mini weights via Ollama into the staging tree (≈ 2.2 GB)
-bash scripts/bundle/prepare-models.sh ./staging
+Or step by step:
 
-# 3c. Assemble the single distributable artifact + full SHA-256 manifest
+```bash
+make stage-images       # Container images (including vLLM if needed)
+make stage-models       # AI model weights (Ollama or vLLM)
+make stage-mission-control   # Builds the custom `aegis/mission-control:latest` image
+```
+
+Then generate manifests and create the bundle:
+
+```bash
+./aegis-cli generate --profile gcp-demo --out ./out/gcp-demo
+
 ./aegis-cli bundle \
     --profile gcp-demo \
     --manifests ./out/gcp-demo \
@@ -135,6 +147,7 @@ Inside the VM:
 ```bash
 sudo mkdir -p /opt/aegis
 sudo tar -xzf /tmp/aegis-gcp-demo-v1.bundle -C /opt/aegis --strip-components=1
+# This matches the current bundler.py recommendation and bootstrap.sh expectations
 
 # Now run the bootstrap that was rendered for this profile
 sudo /opt/aegis/scripts/bootstrap.sh

@@ -14,6 +14,18 @@ K3S_IMAGES_DIR="/var/lib/rancher/k3s/agent/images"
 echo "=== Aegis Air-Gap Bootstrap (profile: {{ .ProfileName }}) ==="
 echo "Bundle root: ${BUNDLE_ROOT}"
 
+# 0. Verify bundle integrity (critical for air-gap trust)
+if [ -f "${BUNDLE_ROOT}/SHA256SUMS" ]; then
+  echo "==> Verifying bundle integrity..."
+  if ! (cd "${BUNDLE_ROOT}" && sha256sum -c SHA256SUMS --ignore-missing); then
+    echo "ERROR: Bundle SHA256SUMS verification FAILED!"
+    exit 1
+  fi
+  echo "==> Bundle integrity verification passed."
+else
+  echo "WARNING: No SHA256SUMS found in bundle — skipping integrity check (not recommended for production air-gap)."
+fi
+
 # 1. Ensure directories
 mkdir -p "${K3S_IMAGES_DIR}" "${BUNDLE_ROOT}/logs"
 
@@ -48,6 +60,12 @@ kubectl apply -f "${MANIFEST_DIR}/ollama-deployment.yaml"
 {{- end }}
 kubectl apply -f "${MANIFEST_DIR}/mission-control-deployment.yaml"
 kubectl apply -f "${MANIFEST_DIR}/zot-registry.yaml" || true
+
+{{- if eq .ClusterMode "multi-node" }}
+# Longhorn for distributed storage (Phase 6)
+echo "==> Applying Longhorn (distributed storage)..."
+kubectl apply -f "${MANIFEST_DIR}/longhorn-deployment.yaml" || true
+{{- end }}
 
 # 6. Wait for GPU to appear and pods to be ready (best effort)
 echo "==> Waiting for GPU resource and pods..."

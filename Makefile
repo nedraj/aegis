@@ -22,6 +22,7 @@ bundle: ## Run the full bundling pipeline (assumes staging + manifests already p
 	@echo "==> Make sure you have already executed:"
 	@echo "    make stage-images"
 	@echo "    make stage-models"
+	@echo "    make stage-mission-control   # IMPORTANT: builds the custom Mission Control image"
 	@echo "    make generate"
 	$(CLI) bundle --profile gcp-demo --manifests out/gcp-demo --staging staging --out aegis-gcp-demo.bundle
 
@@ -30,6 +31,11 @@ stage-images: ## Pull and export all required container images (run on connected
 
 stage-models: ## Download Phi-3 weights into the staging tree
 	bash scripts/bundle/prepare-models.sh staging
+
+stage-mission-control: ## Build and export the custom Mission Control image (required for bundles)
+	bash scripts/bundle/build-mission-control.sh staging
+
+stage-all: stage-images stage-models stage-mission-control ## Stage everything needed for a complete bundle
 
 test-local: ## Spin up Mission Control + Ollama locally (no GPU) for API testing
 	docker compose -f examples/docker-compose.local.yml up --build

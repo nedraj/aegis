@@ -72,25 +72,28 @@ func main() {
 			return err
 		}
 
-		// Cloud NAT (only for initial driver + apt + k3s install phase)
-		router, err := compute.NewRouter(ctx, "aegis-router", &compute.RouterArgs{
-			Project: pulumi.String(project),
-			Region:  pulumi.String(region),
-			Network: vpc.SelfLink,
-		})
-		if err != nil {
-			return err
-		}
+		// Cloud NAT + public IP are only needed for the non-golden path (Phase 3 style)
+		// When useGolden is true, we want true zero-NAT from first boot.
+		if !useGolden {
+			router, err := compute.NewRouter(ctx, "aegis-router", &compute.RouterArgs{
+				Project: pulumi.String(project),
+				Region:  pulumi.String(region),
+				Network: vpc.SelfLink,
+			})
+			if err != nil {
+				return err
+			}
 
-		_, err = compute.NewRouterNat(ctx, "aegis-nat", &compute.RouterNatArgs{
-			Project:              pulumi.String(project),
-			Region:               pulumi.String(region),
-			Router:               router.Name,
-			NatIpAllocateOption:  pulumi.String("AUTO_ONLY"),
-			SourceSubnetworkIpRangesToNat: pulumi.String("ALL_SUBNETWORKS_ALL_IP_RANGES"),
-		})
-		if err != nil {
-			return err
+			_, err = compute.NewRouterNat(ctx, "aegis-nat", &compute.RouterNatArgs{
+				Project:                       pulumi.String(project),
+				Region:                        pulumi.String(region),
+				Router:                        router.Name,
+				NatIpAllocateOption:           pulumi.String("AUTO_ONLY"),
+				SourceSubnetworkIpRangesToNat: pulumi.String("ALL_SUBNETWORKS_ALL_IP_RANGES"),
+			})
+			if err != nil {
+				return err
+			}
 		}
 
 		// --- Firewall ---
@@ -188,11 +191,16 @@ echo "[aegis-cloud-init] Bootstrap complete. Remove NAT for air-gap validation."
 			NetworkInterfaces: compute.InstanceNetworkInterfaceArray{
 				&compute.InstanceNetworkInterfaceArgs{
 					Subnetwork: subnet.SelfLink,
-					AccessConfigs: compute.InstanceNetworkInterfaceAccessConfigArray{
-						&compute.InstanceNetworkInterfaceAccessConfigArgs{
-							// Ephemeral public IP (removed after bootstrap to simulate air-gap)
-						},
-					},
+					// Only give a public IP on the non-golden path.
+					// Golden image path should have zero public exposure from the start.
+					AccessConfigs: func() compute.InstanceNetworkInterfaceAccessConfigArray {
+						if useGolden {
+							return nil // No public IP for true zero-NAT golden images
+						}
+						return compute.InstanceNetworkInterfaceAccessConfigArray{
+							&compute.InstanceNetworkInterfaceAccessConfigArgs{},
+						}
+					}(),
 				},
 			},
 			GuestAccelerators: compute.InstanceGuestAcceleratorArray{

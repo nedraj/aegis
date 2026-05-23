@@ -70,23 +70,62 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # Only allow DNS and traffic to the inference backend (ollama or vllm) inside namespace.
-    # Phase 5: uses common aegis/component label + engine-specific port.
+    # Only allow DNS + traffic to inference pods (ollama or vllm) inside the namespace.
+    # Fixed structure (was incorrectly creating two separate peers before).
     - to:
-        - namespaceSelector:
-            matchLabels:
-              aegis/project: "true"
-        - podSelector:
-            matchLabels:
-              aegis/component: inference
+      - namespaceSelector:
+          matchLabels:
+            aegis/project: "true"
+        podSelector:
+          matchLabels:
+            aegis/component: inference
       ports:
         - protocol: TCP
           port: {{ .InferencePort }}
+
+    # Allow DNS (required for service discovery)
     - to:
-        - namespaceSelector: {}
-          podSelector:
-            matchLabels:
-              k8s-app: kube-dns
+      - namespaceSelector: {}
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
+
+    # TODO (Immediate gap): Add a second NetworkPolicy (or combine) that restricts
+    # egress from `aegis/component: inference` pods themselves. Currently they have no restrictions.
+
+---
+apiVersion: v1
+kind: NetworkPolicy
+metadata:
+  name: inference-deny-egress
+  namespace: {{ .Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      aegis/component: inference
+  policyTypes:
+    - Egress
+  egress:
+    # Only allow DNS for now (can be tightened further)
+    - to:
+      - namespaceSelector: {}
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow traffic to Mission Control (if needed for future coordination)
+    - to:
+      - namespaceSelector:
+          matchLabels:
+            aegis/project: "true"
+        podSelector:
+          matchLabels:
+            app: mission-control
+      ports:
+        - protocol: TCP
+          port: 8080

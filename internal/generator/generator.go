@@ -68,17 +68,15 @@ func Generate(p *profiles.Profile, outDir string) error {
 		return fmt.Errorf("no templates found in embed (pattern: %s)", assets.TemplateGlob)
 	}
 
-	// Phase 5: Filter inference deployment templates to only the one matching the profile's engine.
-	// This prevents rendering both ollama-deployment.yaml and vllm-deployment.yaml for a given profile.
+	// Phase 5+: Filter inference deployment templates using the engine registry.
+	// Only the deployment file for the selected engine is rendered.
 	filtered := make([]string, 0, len(tplFiles))
 	for _, pth := range tplFiles {
 		base := filepath.Base(pth)
 		if strings.Contains(base, "-deployment.yaml.tpl") {
-			// inference deployment files are named <engine>-deployment.yaml.tpl (ollama-*, vllm-*)
-			if strings.Contains(base, "ollama-deployment") && ctx.InferenceEngine != "ollama" {
-				continue
-			}
-			if strings.Contains(base, "vllm-deployment") && ctx.InferenceEngine != "vllm" {
+			cfg := GetEngine(ctx.InferenceEngine)
+			expectedFile := cfg.DeploymentFile + ".tpl"
+			if base != expectedFile {
 				continue
 			}
 		}
@@ -145,29 +143,30 @@ func buildContext(p *profiles.Profile) RenderContext {
 		pullPolicy = v
 	}
 
-	// Phase 5 inference engine defaults + derivation
-	engine := p.Inference.Engine
-	if engine == "" {
-		engine = "ollama"
+	// Use the engine registry (generalized in Phase 5+)
+	engineName := p.Inference.Engine
+	if engineName == "" {
+		engineName = "ollama"
 	}
+	engineCfg := GetEngine(engineName)
+
 	infPort := p.Inference.Port
 	if infPort == 0 {
-		if engine == "vllm" {
-			infPort = 8000
-		} else {
-			infPort = 11434
-		}
+		infPort = engineCfg.DefaultPort
 	}
+
 	svcName := p.Inference.ServiceName
 	if svcName == "" {
-		svcName = engine // "ollama" or "vllm" -> service/deployment named after engine for simplicity
+		svcName = engineCfg.Name
 	}
+
 	infReplicas := 1
 	if p.MissionCtrl.Replicas > 0 {
 		// inference replicas typically 1 for GPU
 	}
+
 	quant := p.Model.Quantization
-	if quant == "" && engine == "ollama" {
+	if quant == "" && engineCfg.Name == "ollama" {
 		quant = "q4_0"
 	}
 
@@ -195,8 +194,8 @@ func buildContext(p *profiles.Profile) RenderContext {
 		ModelName:              p.Model.Name,
 		GPUCount:               p.Resources.GPU,
 
-		// Phase 5 pluggable inference
-		InferenceEngine:      engine,
+		// Phase 5+ pluggable inference (now registry-driven)
+		InferenceEngine:      engineCfg.Name,
 		InferenceImage:       p.Inference.Image,
 		InferencePort:        infPort,
 		InferenceServiceName: svcName,

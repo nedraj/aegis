@@ -66,6 +66,12 @@ def create_bundle(staging: Path, manifests: Path, profile: str, out: Path):
                 shutil.copytree(src, root / sub)
                 print(f"  + copied {sub}/")
 
+        # Copy image manifest if present (for reproducibility tracking)
+        img_manifest = staging / "images" / "images-manifest.txt"
+        if img_manifest.exists():
+            shutil.copy2(img_manifest, root / "images" / "images-manifest.txt")
+            print("  + copied images/images-manifest.txt")
+
         # Copy rendered manifests
         man_dest = root / "manifests"
         shutil.copytree(manifests, man_dest)
@@ -87,7 +93,8 @@ def create_bundle(staging: Path, manifests: Path, profile: str, out: Path):
         meta = {
             "created_at": datetime.now(timezone.utc).isoformat(),
             "profile": profile,
-            "aegis_version": "0.1.0-phase3",
+            "aegis_version": "0.1.0-phase5",
+            "reproducibility_note": "See images/images-manifest.txt for pinned image digests",
             "contents": {
                 "images": [p.name for p in (root / "images").glob("*") if p.is_file()],
                 "models": list({p.parent.name for p in (root / "models").rglob("*") if p.is_file()}),
@@ -122,7 +129,8 @@ def create_bundle(staging: Path, manifests: Path, profile: str, out: Path):
         size = out.stat().st_size / (1024 * 1024)
         print(f"\n==> SUCCESS: {out} ({size:.1f} MiB)")
         print(f"    Verify with:  sha256sum -c {out.name}.sha256")
-        print(f"    Extract:      tar -xzf {out} -C /opt/aegis")
+        print(f"    Extract:      tar -xzf {out} -C /opt/aegis --strip-components=1")
+        print(f"    (This matches how bootstrap.sh expects the files under /opt/aegis)")
         return out
 
 def main():

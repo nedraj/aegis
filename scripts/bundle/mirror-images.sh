@@ -11,11 +11,12 @@ IMAGES_DIR="${STAGING_DIR}/images"
 mkdir -p "${IMAGES_DIR}"
 
 IMAGES=(
-  "ollama/ollama:latest"
-  "vllm/vllm-openai:latest"
-  "ghcr.io/project-zot/zot:latest"
+  # Pinned versions recommended for reproducibility in air-gap bundles.
+  # Update these when you validate new releases.
+  "ollama/ollama:v0.1.42"                    # or latest stable you have tested
+  "vllm/vllm-openai:v0.5.0"                # or latest stable you have tested
+  "ghcr.io/project-zot/zot:v2.0.0"         # or latest stable
   "nvcr.io/nvidia/k8s-device-plugin:v0.15.0"
-  # Add any other images your manifests reference (pause, etc. if needed)
 )
 
 echo "==> Mirroring images for Aegis air-gap bundle..."
@@ -31,3 +32,17 @@ done
 
 echo "==> All images exported to ${IMAGES_DIR}"
 ls -lh "${IMAGES_DIR}"
+
+# Generate a simple image manifest with digests for reproducibility tracking
+MANIFEST="${IMAGES_DIR}/images-manifest.txt"
+echo "# Aegis Image Manifest - $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$MANIFEST"
+echo "# Format: image|digest|tar.gz" >> "$MANIFEST"
+for img in "${IMAGES[@]}"; do
+  safe_name=$(echo "$img" | tr '/:' '_')
+  tarfile="${IMAGES_DIR}/${safe_name}.tar.gz"
+  if [ -f "$tarfile" ]; then
+    digest=$(sha256sum "$tarfile" | cut -d' ' -f1)
+    echo "${img}|sha256:${digest}|${safe_name}.tar.gz" >> "$MANIFEST"
+  fi
+done
+echo "==> Image manifest written to ${MANIFEST}"
