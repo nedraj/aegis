@@ -100,6 +100,20 @@ After everything is deployed in the locked-down environment, you must be able to
 
 See [docs/PLAN.md](docs/PLAN.md) for the full roadmap.
 
+## Standards & Compliance Alignment
+
+Aegis is being actively aligned with defense and enterprise standards (see [docs/reference.md](docs/reference.md) for details).
+
+| Area                              | Status          | Notes |
+|-----------------------------------|-----------------|-------|
+| **NIST SP 800-161 (C-SCRM)**      | 🟡 In Progress  | SBOM + cosign signing scaffolding added (Phase 7) |
+| **DoD DevSecOps (Declarative)**   | 🟡 Partial      | Strong at K8s layer; pipeline still has manual steps |
+| **CNCF Air-Gapped Deliverables**  | ✅ Good         | Pre-mirroring + portable bundle |
+| **Reproducibility**               | 🟡 Improving    | Pinned images + manifests; digest pinning in progress |
+| **Target Verification**           | ✅ Good         | Mandatory SHA256 in bootstrap + web inspector |
+
+**Legend**: ✅ Solid | 🟡 In Progress / Partial | 🔴 Major Gap
+
 ---
 
 ## Requirements (Developer Machine)
